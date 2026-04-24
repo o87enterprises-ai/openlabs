@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>OpenLabs - Virtual Chem Lab v1.0 (Beta)</title>
+  <style>
+    :root {
+      --primary: #00d4ff;
+      --secondary: #ff3e3e;
+      --accent: #00ff88;
+      --bg: #0a0a1a;
+      --panel-bg: rgba(20, 20, 45, 0.95);
+    }
+    
+    body { margin: 0; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); touch-action: none; color: white; }
+    canvas { display: block; }
+    
+    #hud {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: var(--panel-bg);
+      padding: 20px;
+      border-radius: 12px;
+      pointer-events: auto;
+      border: 1px solid var(--primary);
+      box-shadow: 0 0 25px rgba(0, 212, 255, 0.3);
+      z-index: 100;
+      max-width: 320px;
+    }
+
+    @media (max-width: 600px) {
+      #hud { top: auto; bottom: 20px; left: 10px; right: 10px; max-width: none; padding: 15px; }
+      .mission-text { display: none; }
+      .control-grid { grid-template-columns: 1fr 1fr !important; }
+    }
+
+    h1 { margin: 0; color: var(--primary); font-size: 20px; letter-spacing: 2px; border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 10px; }
+    .mission-text { font-size: 11px; color: #aaa; margin-bottom: 15px; font-style: italic; line-height: 1.4; }
+
+    .control-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+
+    button {
+      background: rgba(0, 212, 255, 0.15);
+      border: 1px solid var(--primary);
+      color: var(--primary);
+      padding: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 8px;
+      text-transform: uppercase;
+      font-size: 11px;
+      transition: all 0.3s ease;
+      outline: none;
+    }
+
+    button:hover { background: var(--primary); color: #000; box-shadow: 0 0 15px var(--primary); }
+    button.active { background: var(--accent); border-color: var(--accent); color: #000; box-shadow: 0 0 15px var(--accent); }
+    button.danger { border-color: var(--secondary); color: var(--secondary); }
+    button.danger:hover { background: var(--secondary); color: white; }
+
+    #reaction-msg {
+      position: absolute;
+      top: 50%;
+      width: 100%;
+      text-align: center;
+      color: var(--accent);
+      font-size: 28px;
+      font-weight: bold;
+      pointer-events: none;
+      text-shadow: 0 0 20px rgba(0, 255, 136, 0.8);
+      transform: translateY(-50%);
+      opacity: 0;
+      transition: opacity 0.5s;
+      z-index: 50;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <h1>OPENLABS</h1>
+    <div class="mission-text">"The only asset is time. The only currency is love, and the only debt is fear."</div>
+    
+    <div class="control-grid">
+      <button id="light-toggle" class="active">💡 Overhead Light: ON</button>
+      <button id="pour-vinegar">Pour Vinegar</button>
+      <button id="pour-soda">Pour Soda</button>
+      <button id="reset-system" class="danger">Reset Lab</button>
+    </div>
+  </div>
+  
+  <div id="reaction-msg">REACTION TRIGGERED</div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { DragControls } from 'three/addons/controls/DragControls.js';
+
+    // --- SCENE ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a20);
+    // Removed fog for better visibility
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    const updateCam = () => {
+      const p = window.innerHeight > window.innerWidth;
+      camera.position.set(p ? 5 : 4, p ? 5 : 4, p ? 10 : 8);
+    };
+    updateCam();
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const orbit = new OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 0.5, 0);
+
+    // --- LIGHTING (BRIGHTER DEFAULT) ---
+    const ambient = new THREE.AmbientLight(0xffffff, 1.0); // Bright white ambient
+    scene.add(ambient);
+
+    const overhead = new THREE.PointLight(0xffffff, 150); // Stronger point light
+    overhead.position.set(0, 5, 2);
+    overhead.castShadow = true;
+    scene.add(overhead);
+
+    // Helper to see where light is
+    const lightHelper = new THREE.PointLightHelper(overhead, 0.2);
+    scene.add(lightHelper);
+
+    // --- WORLD (BRIGHTER SURFACES) ---
+    const grid = new THREE.GridHelper(30, 60, 0x00d4ff, 0x444444);
+    scene.add(grid);
+
+    const table = new THREE.Mesh(
+      new THREE.BoxGeometry(4.5, 0.1, 2.5),
+      new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.1, metalness: 0.4 }) // Brighter table
+    );
+    table.position.set(0, 0.75, 0);
+    table.receiveShadow = true;
+    scene.add(table);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(30, 30),
+      new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.8 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // --- BEAKER COMPONENT ---
+    function createBeaker(x, color, label) {
+      const group = new THREE.Group();
+      
+      // Visual Glass
+      const glass = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.3, 0.28, 0.7, 32, 1, true),
+        new THREE.MeshPhysicalMaterial({ 
+          color: 0xffffff, transparent: true, opacity: 0.4, transmission: 1, thickness: 0.15, side: THREE.DoubleSide
+        })
+      );
+      glass.position.y = 0.35;
+      glass.castShadow = true;
+      group.add(glass);
+
+      // Liquid
+      const liquid = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.28, 0.26, 0.4, 32),
+        new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: 0.85 })
+      );
+      liquid.position.y = 0.22;
+      liquid.name = 'liquid';
+      group.add(liquid);
+
+      // Robust Label
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = 128; canvas.height = 64;
+      ctx.fillStyle = '#00d4ff'; ctx.font = 'bold 26px Segoe UI, Arial'; ctx.textAlign = 'center';
+      ctx.fillText(label, 64, 40);
+      const tex = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+      sprite.position.y = 1.0; sprite.scale.set(1.4, 0.7, 1);
+      group.add(sprite);
+
+      group.position.set(x, 0.8, 0);
+      group.userData = { home: new THREE.Vector3(x, 0.8, 0), isSoda: label === 'SODA' };
+      return group;
+    }
+
+    const vinegar = createBeaker(-1.1, 0xeeffaa, 'VINEGAR');
+    const soda = createBeaker(1.1, 0xffffff, 'SODA');
+    scene.add(vinegar, soda);
+
+    // --- INTERACTION (FIXED SODA PICKUP) ---
+    const draggable = [vinegar, soda];
+    const drag = new DragControls(draggable, camera, renderer.domElement);
+    drag.transformGroup = true;
+    
+    drag.addEventListener('dragstart', () => { orbit.enabled = false; });
+    drag.addEventListener('dragend', (e) => {
+      orbit.enabled = true;
+      if (!e.object.userData.animating) {
+        e.object.position.y = 0.8;
+        e.object.rotation.z = 0;
+      }
+    });
+
+    drag.addEventListener('drag', (e) => {
+      const obj = e.object;
+      const other = obj === vinegar ? soda : vinegar;
+      const d = obj.position.distanceTo(other.position);
+
+      if (d < 1.0 && obj.position.y > other.position.y + 0.1) {
+        const dir = obj.position.x < other.position.x ? -1 : 1;
+        obj.rotation.z = THREE.MathUtils.lerp(obj.rotation.z, 1.4 * dir, 0.1);
+        if (Math.abs(obj.rotation.z) > 1.2) startReaction();
+      } else {
+        obj.rotation.z = THREE.MathUtils.lerp(obj.rotation.z, 0, 0.1);
+      }
+      obj.position.y = Math.max(0.8, obj.position.y);
+    });
+
+    // --- ENGINE ---
+    let reacting = false;
+    function startReaction() {
+      if (reacting) return;
+      reacting = true;
+      
+      const msg = document.getElementById('reaction-msg');
+      msg.style.opacity = 1;
+      msg.innerText = "CO₂ GAS RELEASED!";
+
+      const bubbles = new THREE.Group();
+      scene.add(bubbles);
+      const mid = new THREE.Vector3().addVectors(vinegar.position, soda.position).multiplyScalar(0.5);
+      bubbles.position.set(mid.x, 1.2, mid.z);
+
+      for(let i=0; i<60; i++) {
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+        b.position.set((Math.random()-0.5)*1.0, 0, (Math.random()-0.5)*1.0);
+        b.userData.v = 0.02 + Math.random()*0.05;
+        bubbles.add(b);
+      }
+
+      const loop = () => {
+        if (!reacting || !bubbles) return;
+        let alive = false;
+        bubbles.children.forEach(b => {
+          b.position.y += b.userData.v;
+          b.material.opacity -= 0.008;
+          if (b.material.opacity > 0) alive = true;
+        });
+        if (alive) requestAnimationFrame(loop);
+        else {
+          scene.remove(bubbles);
+          reacting = false;
+          msg.style.opacity = 0;
+        }
+      };
+      loop();
+    }
+
+    // --- UI ---
+    const lightBtn = document.getElementById('light-toggle');
+    lightBtn.onclick = () => {
+      overhead.visible = !overhead.visible;
+      lightHelper.visible = overhead.visible;
+      lightBtn.innerText = `💡 Overhead Light: ${overhead.visible ? 'ON' : 'OFF'}`;
+      lightBtn.classList.toggle('active', overhead.visible);
+      scene.background.set(overhead.visible ? 0x0a0a20 : 0x010105);
+    };
+
+    const pourAnim = (b) => {
+      if (reacting) return;
+      b.userData.animating = true;
+      const target = b === vinegar ? soda : vinegar;
+      const start = b.position.clone();
+      const end = target.position.clone().add(new THREE.Vector3(b === vinegar ? -0.5 : 0.5, 0.8, 0));
+      
+      let t = 0;
+      const step = () => {
+        t += 0.025;
+        if (t <= 1) {
+          b.position.lerpVectors(start, end, t);
+          b.rotation.z = t * 1.4 * (b === vinegar ? -1 : 1);
+          requestAnimationFrame(step);
+        } else {
+          startReaction();
+          setTimeout(() => {
+            let r = 0;
+            const back = () => {
+              r += 0.025;
+              if (r <= 1) {
+                b.position.lerpVectors(end, b.userData.home, r);
+                b.rotation.z = (1 - r) * 1.4 * (b === vinegar ? -1 : 1);
+                requestAnimationFrame(back);
+              } else { b.userData.animating = false; }
+            };
+            back();
+          }, 1500);
+        }
+      };
+      step();
+    };
+
+    document.getElementById('pour-vinegar').onclick = () => pourAnim(vinegar);
+    document.getElementById('pour-soda').onclick = () => pourAnim(soda);
+    document.getElementById('reset-system').onclick = () => {
+      [vinegar, soda].forEach(b => {
+        b.position.copy(b.userData.home);
+        b.rotation.set(0,0,0);
+        b.userData.animating = false;
+      });
+      reacting = false;
+      document.getElementById('reaction-msg').style.opacity = 0;
+    };
+
+    function animate() {
+      requestAnimationFrame(animate);
+      orbit.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.onresize = () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      updateCam();
+    };
+  </script>
+</body>
+</html>
