@@ -1,3 +1,12 @@
+---
+title: OpenLabs
+emoji: 🧪
+colorFrom: blue
+colorTo: green
+sdk: static
+pinned: false
+---
+
 # OpenLabs: Virtual Chem Lab (Beta)
 A real-world physics, live 3D/VR research lab.
 
