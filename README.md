@@ -13,5 +13,5 @@ This is a beta prototype demonstrating a Vinegar + Baking Soda reaction in a Web
 We are seeking like-minded collaborators interested in the future of humanity over money.
 
 ## Hosted Version
-[View the Live Lab on Hugging Face](https://huggingface.co/spaces/OpenLabs/ChemLab) (Example Link)
+[View the Live Lab on Hugging Face](https://huggingface.co/spaces/truegleai/openlabs)
 
